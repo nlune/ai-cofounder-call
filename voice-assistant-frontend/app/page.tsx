@@ -17,55 +17,101 @@ import { NoAgentNotification } from "@/components/NoAgentNotification";
 import { CloseIcon } from "@/components/CloseIcon";
 import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import { useLocalParticipant } from "@livekit/components-react";
-import { useLiveKitRoom } from "@livekit/components-react";
 
 function TaskDisplay() {
-  const [taskResult, setTaskResult] = useState<Array<{name:string, task:string}>>([]);
+  const [taskResult, setTaskResult] = useState<Array<{done:boolean, task:string}>>([]);
+  const [agentActions, setAgentAction] = useState<Array<{action: string, description: string}>>([]);
   const { localParticipant } = useLocalParticipant();
 
   console.log('taskResult:', taskResult);
+
+  const handleCheck = (idx: number) => {
+    const newTasks = [...taskResult];
+    newTasks[idx].done = !newTasks[idx].done;
+    setTaskResult(newTasks);
+  }
 
   useEffect(() => {
     if (!localParticipant) return;
 
     // Register RPC method to receive task results
     localParticipant.registerRpcMethod(
-      'getAgentTask',
+      'getHumanTask',
       async (data: RpcInvocationData) => {
         try {
           let res = JSON.parse(data.payload);
-          console.log('Received task:', res.name, res.task);
-          setTaskResult(prevTasks => [...prevTasks, {name: res.name, task:res.task}]);
+          console.log('Received task:', res.task);
+          setTaskResult(prevTasks => [...prevTasks, {done: false, task:res.task}]);
         } catch {
           throw new RpcError(1, "didn't get result rpcerr");
         }
         return JSON.stringify({ result: taskResult });
       }
     );
+        // Register RPC method for agent background actions
+        localParticipant.registerRpcMethod(
+          'getAgentTask',
+          async (data: RpcInvocationData) => {
+            try {
+              let res = JSON.parse(data.payload);
+              console.log(`Received agent action: ${res.action} and desc ${res.description}`);
+              setAgentAction(prevTasks => [...prevTasks, {action: res.action, description: res.description}]);
+            } catch {
+              throw new RpcError(1, "didn't get agent action rpcerr");
+            }
+            return JSON.stringify({ result: taskResult });
+          }
+        );
 
     return () => {
       // Cleanup when component unmounts
       localParticipant.unregisterRpcMethod('getAgentTask');
+      localParticipant.unregisterRpcMethod('agentAction');
     };
   }, [localParticipant]);
 
 
   return (
-    <div className="m-4 p-4 space-y-2">
-      {taskResult.length === 0 ? (
-        <p className="text-gray-400">Let's get started</p>
+   <div className="w-full flex flex-row m-4 p-4 space-y-2">
+    <div className="w-1/2 m-4 p-4 space-y-2">
+    <p className="text-gray-400">Agent workflow</p>
+      {agentActions.length === 0 ? (
+        <p className="text-gray-400"></p>
       ) : (
-        taskResult.map((newtask, i) => (
+        agentActions.map((newtask, i) => (
           <div 
             key={i} 
             className="p-3 rounded-lg shadow"
           >
-            <span className="text-sm text-gray-300">{newtask.name}</span>
-            <p className="text-white">{newtask.task}</p>
+            <span className="text-sm text-gray-300">{newtask.action}</span>
+            <p className="text-white">{newtask.description}</p>
           </div>
         ))
       )}
     </div>
+    <div className="border border-gray-500 w-1/2 m-4 p-4 space-y-2">
+    <p className="text-gray-400">Tasks for today</p>
+      {
+        taskResult.map((newtask, i) => (
+          <div 
+            key={i} 
+            className="p-3 flex items-center"
+          >
+            {/* <span className="text-sm text-gray-300">{newtask.action}</span> */}
+            <input 
+            type="checkbox" 
+            className="mr-2" 
+            checked={newtask.done}
+            onChange={() => handleCheck(i)}
+            />
+            <p className={`text-white ${newtask.done ? 'line-through' : ''}`}>
+              {newtask.task}
+              </p>
+          </div>
+        ))
+      }
+    </div>
+    </div> 
   );
 }
 
@@ -99,7 +145,7 @@ export default function Page() {
   return (
     <main
       data-lk-theme="default"
-      className="h-full w-full grid bg-[var(--lk-bg)] p-4"
+      className="h-full w-full bg-[var(--lk-bg)] p-4"
     >
       <h1 className="text-xl">AI Cofounder Call</h1>
 
@@ -113,7 +159,7 @@ export default function Page() {
         onDisconnected={() => {
           updateConnectionDetails(undefined);
         }}
-        className="grid grid-rows-[1fr_1fr] items-center"
+        className="grid grid-rows-[2fr_1fr] h-3/4 items-center pt-4"
       >
         <div className="flex flex-row gap-4 bg-gray-600 mx-4">
           <TaskDisplay />

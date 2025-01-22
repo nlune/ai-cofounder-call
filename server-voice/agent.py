@@ -27,26 +27,27 @@ class AssistantFnc(llm.FunctionContext):
         self.participant = participant
         
     @llm.ai_callable()
-    async def agent_task(self, task:  Annotated[str, llm.TypeInfo(description="task to add to the board for AI agent")]):
+    async def agent_task(self, action:  Annotated[str, llm.TypeInfo(description="title of action taken by agent")],
+                         description:  Annotated[str, llm.TypeInfo(description="description of action taken by agent")]):
         """
         Process the last user message and generate a corresponding task.
         Args:
-            task: task to add to the board for AI cofounder
+            action: concise title for task
+            description: detailed description of task
         """
         
         # participant = await ctx.wait_for_participant()
         logger.info("agent_task function was called!")
 
-        if task:
-            result = task
+        if action and description:
             try:
                 logger.info("perform rtc")
                 return await self.room.local_participant.perform_rpc(
                 destination_identity= self.participant.identity,
                 method="getAgentTask",
                 payload=json.dumps({
-                    "task": result,
-                    "name": 'AI CoFounder'
+                    "action": action,
+                    "description": description,
                 }),
                 response_timeout=5.0,
                 )
@@ -72,10 +73,9 @@ class AssistantFnc(llm.FunctionContext):
                 logger.info("perform rtc")
                 return await self.room.local_participant.perform_rpc(
                 destination_identity= self.participant.identity,
-                method="getAgentTask",
+                method="getHumanTask",
                 payload=json.dumps({
                     "task": result,
-                    "name": 'Lune'
                 }),
                 response_timeout=5.0,
                 )
@@ -99,13 +99,17 @@ async def entrypoint(ctx: JobContext):
     initial_ctx = llm.ChatContext().append(
         role="system",
         text=(
-            "You are an AI cofounder. Your interface with the user Lune will be via voice. "
+            "You are an AI cofounder. Your interface with the user Lune will be via voice. You are working on an AI startup."
             "You will be able to understand and generate human-like speech, and be helpful in your responses. Talk in a natural human tone. Give insightful prompts where possible."
-            "You have access to a function called 'agent_task' and a function called 'human_task' that takes a 'task' argument."
-            "If the task if for yourself, use the 'agent_task' function."
-            "If the task is for the human cofounder, use the 'human_task' function."
+            "Your startup is called Veiz, a platform for task management and accountability with an AI coach and reflection space."
+            "The user can track their work and life progress, receive summaries, and get insights on their productivity."
+            
+           
+            "You have access to a function called 'agent_task' that takes 'action' and 'description' as arguments, and a function called 'human_task' that takes a 'task' argument. Try to be helpful and assign to yourself via 'agent_task' when possible."
+            "If the task if for yourself, use the 'agent_task' function. Make sure to use the function whenever a new request comes up for you to complete."
+            "If the task is for the human cofounder, use the 'human_task' function. Make sure to use this function for tasks the user has to complete."
             "You must call the agent_task function using the following format:"
-            "<function>agent_task(task='...')</function>"
+            "<function>agent_task(action='...', description='...')</function>"
             "You must call the human_task function using the following format:"
             "<function>human_task(task='...')</function>"
             "IMPORTANT: Do not use the function call with any other text. Process the user message to get the correct task to make sure to add tasks appropriately."
@@ -135,7 +139,7 @@ async def entrypoint(ctx: JobContext):
         vad=ctx.proc.userdata["vad"],
         stt=groq_stt,
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=openai.TTS(voice="fable", speed=1),
+        tts=openai.TTS(voice="fable", speed=1.05),
         chat_ctx=initial_ctx,
         fnc_ctx=fnc_ctx,
     )
